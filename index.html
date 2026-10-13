@@ -1,0 +1,221 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>心智圖工作台</title>
+<meta name="description" content="建立多張心智圖、自由增刪節點，按儲存就寫回雲端。">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%F0%9F%A7%A0%3C/text%3E%3C/svg%3E">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500&family=Noto+Sans+TC:wght@400;500;700&display=swap">
+<style>
+:root{
+  --ground:#EDF0F2; --ground-2:#E4E9EC; --surface:#FFFFFF; --surface-2:#F6F8F9;
+  --ink:#141D23; --ink-2:#4C5C66; --muted:#7A8B95;
+  --line:#D2DADF; --line-2:#BBC6CD;
+  --accent:#14607F; --accent-ink:#FFFFFF; --accent-soft:#DCEAF1;
+  --danger:#A6412F; --ok:#2C6E54;
+  --d0:#14607F; --d1:#1E7F74; --d2:#50783C; --d3:#8A6A24; --d4:#8A4A52;
+  --dot:rgba(20,29,35,.11);
+  --shadow:0 1px 2px rgba(20,29,35,.06), 0 6px 18px rgba(20,29,35,.07);
+  --font-ui:"Archivo","Noto Sans TC","PingFang TC","Microsoft JhengHei",system-ui,sans-serif;
+  --font-mono:"IBM Plex Mono",ui-monospace,SFMono-Regular,monospace;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --ground:#0D1317; --ground-2:#121A1F; --surface:#17222A; --surface-2:#1C2831;
+    --ink:#E4EDF2; --ink-2:#A8BAC4; --muted:#7D909C;
+    --line:#27353E; --line-2:#36474F;
+    --accent:#4FA6C9; --accent-ink:#06171F; --accent-soft:#17323F;
+    --danger:#E08874; --ok:#6FC39C;
+    --d0:#4FA6C9; --d1:#4FBCAE; --d2:#8FBE6B; --d3:#D6B163; --d4:#D98B93;
+    --dot:rgba(228,237,242,.10);
+    --shadow:0 1px 2px rgba(0,0,0,.3), 0 8px 22px rgba(0,0,0,.34);
+  }
+}
+:root[data-theme="dark"]{
+  --ground:#0D1317; --ground-2:#121A1F; --surface:#17222A; --surface-2:#1C2831;
+  --ink:#E4EDF2; --ink-2:#A8BAC4; --muted:#7D909C;
+  --line:#27353E; --line-2:#36474F;
+  --accent:#4FA6C9; --accent-ink:#06171F; --accent-soft:#17323F;
+  --danger:#E08874; --ok:#6FC39C;
+  --d0:#4FA6C9; --d1:#4FBCAE; --d2:#8FBE6B; --d3:#D6B163; --d4:#D98B93;
+  --dot:rgba(228,237,242,.10);
+  --shadow:0 1px 2px rgba(0,0,0,.3), 0 8px 22px rgba(0,0,0,.34);
+}
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+img{max-width:100%}
+body{margin:0;background:var(--ground);color:var(--ink);font-family:var(--font-ui);font-size:14px;-webkit-font-smoothing:antialiased}
+button{font:inherit;color:inherit;cursor:pointer}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px;border-radius:4px}
+
+.app{display:grid;grid-template-columns:252px 1fr;height:100dvh;min-height:520px}
+
+/* ---------- rail ---------- */
+.rail{background:var(--ground-2);border-right:1px solid var(--line);display:flex;flex-direction:column;min-height:0}
+.brand{padding:18px 18px 14px;border-bottom:1px solid var(--line)}
+.brand h1{margin:0;font-size:16px;font-weight:700;letter-spacing:-.01em}
+.brand p{margin:4px 0 0;font-size:11.5px;color:var(--muted);font-family:var(--font-mono);letter-spacing:.04em;text-transform:uppercase}
+.rail-head{display:flex;align-items:center;justify-content:space-between;padding:14px 14px 8px}
+.rail-head span{font-size:11px;font-family:var(--font-mono);letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+.btn-new{border:1px solid var(--accent);background:var(--accent);color:var(--accent-ink);border-radius:5px;padding:5px 10px;font-size:12.5px;font-weight:500}
+.btn-new:hover{filter:brightness(1.08)}
+.maplist{list-style:none;margin:0;padding:0 8px 8px;overflow-y:auto;flex:1;min-height:0;display:flex;flex-direction:column;gap:2px}
+.maplist li{display:flex;align-items:center;gap:8px;border-radius:5px;padding:0 4px 0 10px}
+.maplist li:hover{background:var(--surface-2)}
+.maplist li.on{background:var(--surface);box-shadow:inset 2px 0 0 var(--accent)}
+.maplist button.pick{flex:1;min-width:0;background:none;border:0;padding:9px 0;text-align:left;font-size:13.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.maplist li.on button.pick{font-weight:500}
+.maplist .cnt{font-family:var(--font-mono);font-size:11px;color:var(--muted);font-variant-numeric:tabular-nums}
+.maplist .pip{width:6px;height:6px;border-radius:50%;background:var(--accent);flex:none}
+.maplist .kill{border:0;background:none;color:var(--muted);padding:4px 6px;border-radius:4px;line-height:1;font-size:15px;opacity:0;transition:opacity .12s}
+.maplist li:hover .kill,.maplist li.on .kill{opacity:1}
+.maplist .kill:hover{color:var(--danger);background:var(--surface-2)}
+.empty-rail{padding:10px 12px;color:var(--muted);font-size:12.5px;line-height:1.6}
+.rail-foot{border-top:1px solid var(--line);padding:11px 14px;font-size:11.5px;color:var(--muted);display:flex;align-items:center;gap:7px}
+.led{width:7px;height:7px;border-radius:50%;background:var(--muted);flex:none}
+.led.live{background:var(--ok)}
+.led.off{background:var(--danger)}
+
+/* ---------- main ---------- */
+.main{display:flex;flex-direction:column;min-width:0;min-height:0}
+.topbar{display:flex;align-items:center;gap:12px;padding:12px 18px;background:var(--surface);border-bottom:1px solid var(--line);flex-wrap:wrap}
+.title-in{flex:1;min-width:160px;border:1px solid transparent;background:none;color:var(--ink);font:600 19px/1.3 var(--font-ui);letter-spacing:-.015em;padding:5px 8px;border-radius:5px}
+.title-in:hover{border-color:var(--line)}
+.title-in:focus{border-color:var(--accent);outline:none;background:var(--surface-2)}
+.meta{font-family:var(--font-mono);font-size:11.5px;color:var(--muted);font-variant-numeric:tabular-nums;white-space:nowrap}
+.acts{display:flex;align-items:center;gap:6px}
+.btn{border:1px solid var(--line-2);background:var(--surface);border-radius:5px;padding:6px 11px;font-size:13px}
+.btn:hover:not(:disabled){border-color:var(--ink-2)}
+.btn:disabled{opacity:.42;cursor:default}
+.btn.save{border-color:var(--accent);background:var(--accent);color:var(--accent-ink);font-weight:500;min-width:96px}
+.btn.save:disabled{background:var(--surface);color:var(--muted);border-color:var(--line)}
+.notice{padding:9px 18px;font-size:12.5px;background:var(--accent-soft);color:var(--ink);border-bottom:1px solid var(--line)}
+.notice.bad{background:var(--surface-2);border-left:3px solid var(--danger)}
+
+/* ---------- stage ---------- */
+.stage{position:relative;flex:1;min-height:0;overflow:hidden;cursor:grab;
+  background-color:var(--ground);
+  background-image:radial-gradient(var(--dot) 1px, transparent 1px);
+  background-size:22px 22px}
+.stage.drag{cursor:grabbing}
+.canvas{position:absolute;inset:0;width:8000px;height:6000px;transform-origin:0 0}
+.canvas svg{position:absolute;inset:0;width:8000px;height:6000px;pointer-events:none;overflow:visible}
+
+.node{position:absolute;max-width:224px;background:var(--surface);border:1px solid var(--line);
+  border-left:3px solid var(--nc,var(--d1));border-radius:5px;padding:7px 11px;font-size:14px;line-height:1.45;
+  color:var(--ink);box-shadow:var(--shadow);cursor:pointer;white-space:pre-wrap;word-break:break-word;
+  transition:box-shadow .14s, border-color .14s}
+.node:hover{border-color:var(--line-2)}
+.node.root{background:var(--accent);color:var(--accent-ink);border-color:var(--accent);border-left-color:var(--accent);
+  font-size:15.5px;font-weight:600;padding:9px 14px;max-width:260px}
+.node.sel{box-shadow:0 0 0 2px var(--accent), var(--shadow)}
+.node[contenteditable="true"]{cursor:text;outline:none;box-shadow:0 0 0 2px var(--accent), var(--shadow)}
+.node .ph{color:var(--muted)}
+
+.tb{position:absolute;display:flex;gap:2px;background:var(--surface);border:1px solid var(--line-2);
+  border-radius:6px;padding:3px;box-shadow:var(--shadow);transform:translate(-50%,-100%);z-index:5}
+.tb[hidden]{display:none!important}
+.tb button{border:0;background:none;border-radius:4px;padding:5px 8px;font-size:12.5px;white-space:nowrap;color:var(--ink-2)}
+.tb button:hover:not(:disabled){background:var(--surface-2);color:var(--ink)}
+.tb button:disabled{opacity:.35;cursor:default}
+.tb button.del:hover{color:var(--danger)}
+.tb .sep{width:1px;background:var(--line);margin:3px 2px}
+
+.zoom{position:absolute;right:14px;bottom:14px;display:flex;gap:4px;z-index:4}
+.zoom button{width:30px;height:30px;border:1px solid var(--line-2);background:var(--surface);border-radius:5px;
+  box-shadow:var(--shadow);font-size:14px;line-height:1;display:grid;place-items:center}
+.zoom button.wide{width:auto;padding:0 10px;font-size:12px}
+.zoom button:hover{border-color:var(--ink-2)}
+
+.blank{position:absolute;inset:0;display:grid;place-content:center;justify-items:center;gap:14px;text-align:center;padding:24px}
+.blank h2{margin:0;font-size:19px;font-weight:600}
+.blank p{margin:0;max-width:34em;color:var(--ink-2);line-height:1.7;font-size:13.5px}
+.blank[hidden]{display:none!important}
+
+.keys{display:flex;gap:16px;flex-wrap:wrap;padding:9px 18px;border-top:1px solid var(--line);background:var(--surface);
+  font-size:12px;color:var(--muted)}
+.keys kbd{font-family:var(--font-mono);font-size:11px;background:var(--surface-2);border:1px solid var(--line);
+  border-bottom-width:2px;border-radius:4px;padding:1px 5px;color:var(--ink-2)}
+
+.toast{position:fixed;left:50%;bottom:26px;transform:translateX(-50%);background:var(--ink);color:var(--ground);
+  padding:9px 16px;border-radius:6px;font-size:13px;box-shadow:var(--shadow);z-index:40}
+.toast[hidden]{display:none!important}
+
+@media (max-width:760px){
+  .app{grid-template-columns:1fr;grid-template-rows:auto 1fr}
+  .rail{border-right:0;border-bottom:1px solid var(--line);max-height:36dvh}
+  .brand{padding:12px 14px 10px}
+  .keys{display:none}
+}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+</head>
+<body>
+<div class="app">
+  <aside class="rail">
+    <div class="brand">
+      <h1>心智圖工作台</h1>
+      <p>Mind Map Workbench</p>
+    </div>
+    <div class="rail-head">
+      <span id="railCount">我的心智圖</span>
+      <button class="btn-new" id="btnNew">＋ 新增</button>
+    </div>
+    <ul class="maplist" id="maplist"></ul>
+    <div class="rail-foot"><i class="led" id="led"></i><span id="ledText">連線中…</span></div>
+  </aside>
+
+  <div class="main">
+    <div class="topbar">
+      <input class="title-in" id="titleIn" placeholder="心智圖名稱" autocomplete="off" spellcheck="false" disabled>
+      <span class="meta" id="metaTxt"></span>
+      <div class="acts">
+        <button class="btn" id="btnFit">置中</button>
+        <button class="btn save" id="btnSave" disabled>已儲存</button>
+      </div>
+    </div>
+    <div class="notice" id="notice" hidden></div>
+
+    <div class="stage" id="stage">
+      <div class="canvas" id="canvas">
+        <svg id="wires" aria-hidden="true"></svg>
+        <div id="nodes"></div>
+      </div>
+
+      <div class="tb" id="tb" hidden>
+        <button data-act="child">＋ 子節點</button>
+        <button data-act="sib">＋ 同層</button>
+        <i class="sep"></i>
+        <button data-act="rename">改名</button>
+        <button class="del" data-act="del">刪除</button>
+      </div>
+
+      <div class="blank" id="blank">
+        <h2>還沒有開啟的心智圖</h2>
+        <p>左邊按「＋ 新增」開一張新的心智圖，或從清單挑一張。每張心智圖從一個中心主題開始，往外長出分支。</p>
+        <button class="btn" id="btnNew2">＋ 新增心智圖</button>
+      </div>
+
+      <div class="zoom">
+        <button id="zOut" title="縮小">−</button>
+        <button id="zIn" title="放大">＋</button>
+        <button class="wide" id="zReset">100%</button>
+      </div>
+    </div>
+
+    <div class="keys">
+      <span><kbd>Tab</kbd> 新增子節點</span>
+      <span><kbd>Enter</kbd> 新增同層節點</span>
+      <span><kbd>F2</kbd> / 雙擊 改文字</span>
+      <span><kbd>Delete</kbd> 刪除節點</span>
+      <span><kbd>⌘S</kbd> 存檔</span>
+      <span>拖曳空白處平移 · 滾輪縮放</span>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast" hidden></div>
+<script src="app.js"></script>
+</body>
+</html>
