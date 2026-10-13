@@ -18,8 +18,11 @@
 
 | 設定 | 行為 |
 | --- | --- |
-| `SUPABASE_URL` / `SUPABASE_KEY` 都有填 | 走 Supabase，資料共用，任何開這個網址的人都看得到同一份、也能存檔 |
-| 留空 | 存在瀏覽器的 localStorage，只留在這台裝置的這個瀏覽器 |
+| `SUPABASE_URL` / `SUPABASE_KEY` 都有填（**目前就是這個模式**） | 走 Supabase，資料共用，任何開這個網址的人都看得到同一份、也能存檔 |
+| 留空 | 退回瀏覽器的 localStorage，只留在這台裝置的這個瀏覽器 |
+
+前端帶的是 Supabase 的 publishable（anon）key，本來就設計成公開；資料表的 RLS 開放匿名讀寫，
+等於**知道網址的人都能新增 / 修改 / 刪除心智圖**。這是刻意的設計決定，不要把機密內容放進來。
 
 ### Supabase 資料表
 

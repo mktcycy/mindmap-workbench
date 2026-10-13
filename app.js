@@ -4,8 +4,8 @@
   "use strict";
 
   var CONFIG = {
-    SUPABASE_URL: "",   /* 例：https://xxxx.supabase.co */
-    SUPABASE_KEY: "",   /* anon public key */
+    SUPABASE_URL: "https://rzriqsevesjngggbzpuu.supabase.co",
+    SUPABASE_KEY: "sb_publishable_vv2PX4US87KFDm7v7SXi5w_NKX_2jr8",  /* publishable key，本來就是公開給前端用的 */
     TABLE: "mindmaps"
   };
 
