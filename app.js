@@ -23,8 +23,32 @@
     canvas: document.getElementById("canvas"), wires: document.getElementById("wires"),
     nodes: document.getElementById("nodes"), tb: document.getElementById("tb"),
     blank: document.getElementById("blank"), toast: document.getElementById("toast"),
-    zIn: document.getElementById("zIn"), zOut: document.getElementById("zOut"), zReset: document.getElementById("zReset")
+    zIn: document.getElementById("zIn"), zOut: document.getElementById("zOut"), zReset: document.getElementById("zReset"),
+    np: document.getElementById("np"), npUrl: document.getElementById("npUrl"), npNote: document.getElementById("npNote"),
+    npOk: document.getElementById("npOk"), npCancel: document.getElementById("npCancel"),
+    bubble: document.getElementById("bubble")
   };
+
+  var ICON = {
+    link: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round">'
+        + '<path d="M6.8 9.2a2.6 2.6 0 0 0 3.7 0l2-2a2.6 2.6 0 1 0-3.7-3.7l-.9.9"/>'
+        + '<path d="M9.2 6.8a2.6 2.6 0 0 0-3.7 0l-2 2a2.6 2.6 0 1 0 3.7 3.7l.9-.9"/></svg>',
+    note: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round">'
+        + '<path d="M3 4h10M3 8h10M3 12h6"/></svg>'
+  };
+
+  var iconCache = {};
+  function icon(kind){
+    if(!iconCache[kind]) iconCache[kind] = new DOMParser().parseFromString(ICON[kind], "image/svg+xml").documentElement;
+    return iconCache[kind].cloneNode(true);
+  }
+  /* 只放行 http / https，擋掉 javascript: 之類的網址 */
+  function safeUrl(raw){
+    var u = (raw || "").trim();
+    if(!u) return "";
+    if(!/^[a-z][a-z0-9+.-]*:/i.test(u)) u = "https://" + u;
+    return /^https?:\/\/\S+$/i.test(u) ? u : "";
+  }
 
   var S = {
     remote: {}, work: {}, order: [], dirty: {}, fresh: {},
@@ -181,8 +205,25 @@
       b.className = "node" + (n.parent===null ? " root" : "") + (S.sel===id ? " sel" : "");
       b.dataset.id = id;
       b.style.setProperty("--nc", "var("+DEPTH_VARS[Math.min(d, DEPTH_VARS.length-1)]+")");
-      if(n.text){ b.textContent = n.text; }
+      if(n.text){ b.appendChild(document.createTextNode(n.text)); }
       else { var i=document.createElement("span"); i.className="ph"; i.textContent=PH; b.appendChild(i); }
+
+      var url = safeUrl(n.url), note = (n.note || "").trim();
+      if(url || note){
+        var bag = document.createElement("span"); bag.className = "badges";
+        if(url){
+          var a = document.createElement("a");
+          a.className = "ic link"; a.href = url; a.target = "_blank"; a.rel = "noopener noreferrer";
+          a.title = "開啟 " + url; a.appendChild(icon("link"));
+          bag.appendChild(a);
+        }
+        if(note){
+          var nb = document.createElement("button");
+          nb.className = "ic note"; nb.type = "button"; nb.title = "看備註"; nb.appendChild(icon("note"));
+          bag.appendChild(nb);
+        }
+        b.appendChild(bag);
+      }
       el.nodes.appendChild(b);
     });
   }
@@ -268,6 +309,14 @@
   function applyView(){
     el.canvas.style.transform = "translate("+S.view.x+"px,"+S.view.y+"px) scale("+S.view.k+")";
     placeToolbar();
+    if(!el.bubble.hidden) showBubble(el.bubble.dataset.id);
+    if(npFor) openPropsReposition();
+  }
+  function openPropsReposition(){
+    var r = anchorRect(npFor); if(!r) return;
+    var w = el.np.offsetWidth, h = el.np.offsetHeight;
+    el.np.style.left = clamp(r.cx, w/2 + 10, r.sw - w/2 - 10) + "px";
+    el.np.style.top = (r.below + h + 10 > r.sh ? Math.max(10, r.above - h) : r.below) + "px";
   }
   function fit(){
     var b = bbox(); if(!b) return;
@@ -298,6 +347,59 @@
     el.tb.querySelector('[data-act="sib"]').disabled = isRoot;
     el.tb.querySelector('[data-act="del"]').disabled = isRoot;
   }
+
+  /* ================= 超連結 / 備註 ================= */
+  var npFor = null;
+  function anchorRect(id){
+    var node = el.nodes.querySelector('[data-id="'+id+'"]');
+    if(!node) return null;
+    var sr = el.stage.getBoundingClientRect(), nr = node.getBoundingClientRect();
+    return { sw: sr.width, sh: sr.height, cx: nr.left - sr.left + nr.width/2,
+             below: nr.bottom - sr.top + 10, above: nr.top - sr.top - 10 };
+  }
+  function openProps(id, field){
+    var m = S.work[S.cur]; var n = m && m.nodes[id]; if(!n) return;
+    hideBubble();
+    npFor = id;
+    el.npUrl.value = n.url || "";
+    el.npNote.value = n.note || "";
+    el.np.hidden = false;
+    var r = anchorRect(id);
+    if(r){
+      var w = el.np.offsetWidth, h = el.np.offsetHeight;
+      el.np.style.left = clamp(r.cx, w/2 + 10, r.sw - w/2 - 10) + "px";
+      el.np.style.top = (r.below + h + 10 > r.sh ? Math.max(10, r.above - h) : r.below) + "px";
+    }
+    (field === "note" ? el.npNote : el.npUrl).focus();
+    (field === "note" ? el.npNote : el.npUrl).select();
+  }
+  function closeProps(){ el.np.hidden = true; npFor = null; }
+  function applyProps(){
+    var id = npFor; if(!id) return;
+    var m = S.work[S.cur]; var n = m && m.nodes[id];
+    if(!n){ closeProps(); return; }
+    var raw = el.npUrl.value.trim(), url = safeUrl(raw), note = el.npNote.value.trim();
+    if(raw && !url){ toast("網址看起來不對，只接受 http:// 或 https:// 開頭的連結"); el.npUrl.focus(); return; }
+    var before = (n.url||"") + " " + (n.note||"");
+    if(url) n.url = url; else delete n.url;
+    if(note) n.note = note; else delete n.note;
+    if(before !== (n.url||"") + " " + (n.note||"")) markDirty();
+    closeProps(); render();
+  }
+  function showBubble(id){
+    var m = S.work[S.cur]; var n = m && m.nodes[id];
+    if(!n || !n.note){ hideBubble(); return; }
+    closeProps();
+    el.bubble.textContent = n.note;
+    el.bubble.hidden = false;
+    var r = anchorRect(id);
+    if(r){
+      var w = el.bubble.offsetWidth, h = el.bubble.offsetHeight;
+      el.bubble.style.left = clamp(r.cx, w/2 + 10, r.sw - w/2 - 10) + "px";
+      el.bubble.style.top = (r.below + h + 10 > r.sh ? Math.max(10, r.above - h) : r.below) + "px";
+    }
+  }
+  function hideBubble(){ el.bubble.hidden = true; }
 
   /* ================= chrome ================= */
   function listRows(){
@@ -354,6 +456,7 @@
   }
   function render(){
     el.blank.hidden = !!S.work[S.cur];
+    hideBubble();
     if(!S.editing) renderNodes();
     layout(); renderList(); renderTop(); placeToolbar();
   }
@@ -453,13 +556,38 @@
     if(act === "child") addNode(id);
     else if(act === "sib") addSibling(id);
     else if(act === "rename") edit(id, true);
+    else if(act === "link") openProps(id, "url");
+    else if(act === "note") openProps(id, "note");
     else if(act === "del") delNode(id);
   });
 
+  el.npOk.onclick = applyProps;
+  el.npCancel.onclick = closeProps;
+  el.np.addEventListener("keydown", function(e){
+    if(e.key === "Escape"){ e.stopPropagation(); closeProps(); }
+    else if(e.key === "Enter" && (e.target === el.npUrl || e.metaKey || e.ctrlKey)){ e.preventDefault(); applyProps(); }
+  });
+  el.bubble.addEventListener("click", hideBubble);
+
+  el.nodes.addEventListener("click", function(e){
+    var nb = e.target.closest(".ic.note");
+    if(nb){
+      e.preventDefault(); e.stopPropagation();
+      var host = nb.closest(".node");
+      if(!el.bubble.hidden && el.bubble.dataset.id === host.dataset.id){ hideBubble(); return; }
+      el.bubble.dataset.id = host.dataset.id;
+      showBubble(host.dataset.id);
+      return;
+    }
+    if(e.target.closest(".ic.link")) e.stopPropagation();
+  });
+
   el.nodes.addEventListener("mousedown", function(e){
+    if(e.target.closest(".ic")) { e.stopPropagation(); return; }
     var n = e.target.closest(".node"); if(!n) return;
     if(S.editing === n.dataset.id) return;
     e.stopPropagation();
+    hideBubble(); if(npFor && npFor !== n.dataset.id) closeProps();
     if(S.editing) commit(false);
     S.sel = n.dataset.id;
     Array.prototype.forEach.call(el.nodes.children, function(b){ b.classList.toggle("sel", b.dataset.id === S.sel); });
@@ -490,7 +618,9 @@
     var typing = t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.isContentEditable);
     if((e.metaKey || e.ctrlKey) && (e.key === "s" || e.key === "S")){ e.preventDefault(); save(); return; }
     if(typing) return;
+    if(e.key === "Escape" && (!el.np.hidden || !el.bubble.hidden)){ hideBubble(); closeProps(); return; }
     if(!S.work[S.cur] || !S.sel) return;
+    if((e.metaKey || e.ctrlKey) && (e.key === "k" || e.key === "K")){ e.preventDefault(); openProps(S.sel, "url"); return; }
     if(e.key === "Tab"){ e.preventDefault(); addNode(S.sel); }
     else if(e.key === "Enter"){ e.preventDefault(); addSibling(S.sel); }
     else if(e.key === "F2"){ e.preventDefault(); edit(S.sel, true); }
@@ -500,8 +630,10 @@
 
   var pan = null;
   el.stage.addEventListener("mousedown", function(e){
-    if(e.target.closest(".node") || e.target.closest(".tb") || e.target.closest(".zoom") || e.target.closest(".blank")) return;
+    if(e.target.closest(".node") || e.target.closest(".tb") || e.target.closest(".zoom")
+       || e.target.closest(".blank") || e.target.closest(".np") || e.target.closest(".bubble")) return;
     if(S.editing) commit(false);
+    hideBubble(); closeProps();
     pan = { sx: e.clientX, sy: e.clientY, vx: S.view.x, vy: S.view.y };
     el.stage.classList.add("drag");
   });
