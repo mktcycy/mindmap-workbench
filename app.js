@@ -28,8 +28,23 @@
     npOk: document.getElementById("npOk"), npCancel: document.getElementById("npCancel"),
     bubble: document.getElementById("bubble"),
     q: document.getElementById("q"), qn: document.getElementById("qn"), qPrev: document.getElementById("qPrev"),
-    qNext: document.getElementById("qNext"), qClear: document.getElementById("qClear")
+    qNext: document.getElementById("qNext"), qClear: document.getElementById("qClear"),
+    cp: document.getElementById("cp"), cpGrid: document.getElementById("cpGrid"),
+    cpDeep: document.getElementById("cpDeep"), cpReset: document.getElementById("cpReset")
   };
+
+  var PALETTE = [
+    {key:"sky",    name:"天藍"}, {key:"teal",   name:"湖綠"}, {key:"green",  name:"草綠"},
+    {key:"amber",  name:"琥珀"}, {key:"orange", name:"磚橘"}, {key:"rose",   name:"玫瑰"},
+    {key:"violet", name:"紫羅蘭"}, {key:"slate", name:"石板灰"}
+  ];
+  var PALETTE_KEYS = PALETTE.map(function(c){ return c.key; });
+  /* 節點顏色：自訂的用調色盤，沒自訂就跟著層級深度 */
+  function colorVar(m, id){
+    var n = m.nodes[id];
+    if(n && n.color && PALETTE_KEYS.indexOf(n.color) >= 0) return "var(--c-" + n.color + ")";
+    return "var(" + DEPTH_VARS[Math.min(depth(m, id), DEPTH_VARS.length - 1)] + ")";
+  }
 
   var ICON = {
     link: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round">'
@@ -229,10 +244,12 @@
       var n = m.nodes[id], d = depth(m, id);
       var hit = matches(n, q);
       if(hit) S.hits.push(id);
+      var custom = !!(n.color && PALETTE_KEYS.indexOf(n.color) >= 0);
       var b = document.createElement("div");
-      b.className = "node" + (n.parent===null ? " root" : "") + (S.sel===id ? " sel" : "") + (hit ? " hit" : "");
+      b.className = "node" + (n.parent===null ? " root" : "") + (S.sel===id ? " sel" : "")
+                  + (hit ? " hit" : "") + (custom && n.parent!==null ? " tinted" : "");
       b.dataset.id = id;
-      b.style.setProperty("--nc", "var("+DEPTH_VARS[Math.min(d, DEPTH_VARS.length-1)]+")");
+      b.style.setProperty("--nc", colorVar(m, id));
       if(n.text){ putText(b, n.text, q); }
       else { var i=document.createElement("span"); i.className="ph"; i.textContent=PH; b.appendChild(i); }
 
@@ -318,7 +335,7 @@
       var path = document.createElementNS(svgns, "path");
       path.setAttribute("d", "M"+x1+","+y1+" C"+mx+","+y1+" "+mx+","+y2+" "+x2+","+y2);
       path.setAttribute("fill","none");
-      path.setAttribute("stroke","var("+DEPTH_VARS[Math.min(depth(m,id), DEPTH_VARS.length-1)]+")");
+      path.setAttribute("stroke", colorVar(m, id));
       path.setAttribute("stroke-width","1.6");
       path.setAttribute("stroke-opacity","0.6");
       path.setAttribute("stroke-linecap","round");
@@ -337,14 +354,9 @@
   function applyView(){
     el.canvas.style.transform = "translate("+S.view.x+"px,"+S.view.y+"px) scale("+S.view.k+")";
     placeToolbar();
-    if(!el.bubble.hidden) showBubble(el.bubble.dataset.id);
-    if(npFor) openPropsReposition();
-  }
-  function openPropsReposition(){
-    var r = anchorRect(npFor); if(!r) return;
-    var w = el.np.offsetWidth, h = el.np.offsetHeight;
-    el.np.style.left = clamp(r.cx, w/2 + 10, r.sw - w/2 - 10) + "px";
-    el.np.style.top = (r.below + h + 10 > r.sh ? Math.max(10, r.above - h) : r.below) + "px";
+    if(!el.bubble.hidden) placeFloat(el.bubble, el.bubble.dataset.id);
+    if(npFor) placeFloat(el.np, npFor);
+    if(cpFor) placeFloat(el.cp, cpFor);
   }
   function fit(){
     var b = bbox(); if(!b) return;
@@ -363,7 +375,8 @@
   }
   function placeToolbar(){
     var m = S.work[S.cur];
-    if(!m || !S.sel || !m.nodes[S.sel] || S.editing){ el.tb.hidden = true; return; }
+    /* 面板開著的時候收起工具列，免得兩層浮窗疊在一起 */
+    if(!m || !S.sel || !m.nodes[S.sel] || S.editing || npFor || cpFor){ el.tb.hidden = true; return; }
     var node = el.nodes.querySelector('[data-id="'+S.sel+'"]');
     if(!node){ el.tb.hidden = true; return; }
     var sr = el.stage.getBoundingClientRect(), nr = node.getBoundingClientRect();
@@ -385,23 +398,26 @@
     return { sw: sr.width, sh: sr.height, cx: nr.left - sr.left + nr.width/2,
              below: nr.bottom - sr.top + 10, above: nr.top - sr.top - 10 };
   }
+  /* 把浮動面板擺到節點下方（放不下就改到上方），並夾在舞台範圍內 */
+  function placeFloat(box, id){
+    var r = anchorRect(id); if(!r) return;
+    var w = box.offsetWidth, h = box.offsetHeight;
+    box.style.left = clamp(r.cx, w/2 + 10, r.sw - w/2 - 10) + "px";
+    box.style.top = (r.below + h + 10 > r.sh ? Math.max(10, r.above - h) : r.below) + "px";
+  }
   function openProps(id, field){
     var m = S.work[S.cur]; var n = m && m.nodes[id]; if(!n) return;
-    hideBubble();
+    hideBubble(); closeColors();
     npFor = id;
     el.npUrl.value = n.url || "";
     el.npNote.value = n.note || "";
     el.np.hidden = false;
-    var r = anchorRect(id);
-    if(r){
-      var w = el.np.offsetWidth, h = el.np.offsetHeight;
-      el.np.style.left = clamp(r.cx, w/2 + 10, r.sw - w/2 - 10) + "px";
-      el.np.style.top = (r.below + h + 10 > r.sh ? Math.max(10, r.above - h) : r.below) + "px";
-    }
+    placeToolbar();
+    placeFloat(el.np, id);
     (field === "note" ? el.npNote : el.npUrl).focus();
     (field === "note" ? el.npNote : el.npUrl).select();
   }
-  function closeProps(){ el.np.hidden = true; npFor = null; }
+  function closeProps(){ el.np.hidden = true; npFor = null; placeToolbar(); }
   function applyProps(){
     var id = npFor; if(!id) return;
     var m = S.work[S.cur]; var n = m && m.nodes[id];
@@ -414,18 +430,56 @@
     if(before !== (n.url||"") + " " + (n.note||"")) markDirty();
     closeProps(); render();
   }
+  /* ---- 顏色 ---- */
+  var cpFor = null, cpBuilt = false;
+  function buildSwatches(){
+    if(cpBuilt) return;
+    PALETTE.forEach(function(c){
+      var b = document.createElement("button");
+      b.type = "button"; b.dataset.color = c.key; b.title = c.name;
+      b.setAttribute("aria-label", c.name);
+      b.style.setProperty("--sw", "var(--c-" + c.key + ")");
+      el.cpGrid.appendChild(b);
+    });
+    cpBuilt = true;
+  }
+  function openColors(id){
+    var m = S.work[S.cur]; var n = m && m.nodes[id]; if(!n) return;
+    hideBubble(); closeProps();
+    buildSwatches();
+    cpFor = id;
+    el.cpDeep.checked = false;
+    Array.prototype.forEach.call(el.cpGrid.children, function(b){
+      b.classList.toggle("on", b.dataset.color === n.color);
+    });
+    el.cp.hidden = false;
+    placeToolbar();
+    placeFloat(el.cp, id);
+  }
+  function closeColors(){ el.cp.hidden = true; cpFor = null; placeToolbar(); }
+  function paint(id, key){
+    var m = S.work[S.cur]; if(!m || !m.nodes[id]) return;
+    var targets = [id];
+    if(el.cpDeep.checked){
+      (function walk(x){ kids(m, x).forEach(function(c){ targets.push(c.id); walk(c.id); }); })(id);
+    }
+    var changed = false;
+    targets.forEach(function(t){
+      var n = m.nodes[t];
+      if(key){ if(n.color !== key){ n.color = key; changed = true; } }
+      else if(n.color){ delete n.color; changed = true; }
+    });
+    if(changed) markDirty();
+    closeColors(); render();
+  }
+
   function showBubble(id){
     var m = S.work[S.cur]; var n = m && m.nodes[id];
     if(!n || !n.note){ hideBubble(); return; }
-    closeProps();
+    closeProps(); closeColors();
     el.bubble.textContent = n.note;
     el.bubble.hidden = false;
-    var r = anchorRect(id);
-    if(r){
-      var w = el.bubble.offsetWidth, h = el.bubble.offsetHeight;
-      el.bubble.style.left = clamp(r.cx, w/2 + 10, r.sw - w/2 - 10) + "px";
-      el.bubble.style.top = (r.below + h + 10 > r.sh ? Math.max(10, r.above - h) : r.below) + "px";
-    }
+    placeFloat(el.bubble, id);
   }
   function hideBubble(){ el.bubble.hidden = true; }
 
@@ -640,10 +694,17 @@
     if(act === "child") addNode(id);
     else if(act === "sib") addSibling(id);
     else if(act === "rename") edit(id, true);
+    else if(act === "color") openColors(id);
     else if(act === "link") openProps(id, "url");
     else if(act === "note") openProps(id, "note");
     else if(act === "del") delNode(id);
   });
+
+  el.cpGrid.addEventListener("click", function(e){
+    var b = e.target.closest("button[data-color]");
+    if(b && cpFor) paint(cpFor, b.dataset.color);
+  });
+  el.cpReset.onclick = function(){ if(cpFor) paint(cpFor, null); };
 
   el.npOk.onclick = applyProps;
   el.npCancel.onclick = closeProps;
@@ -671,7 +732,9 @@
     var n = e.target.closest(".node"); if(!n) return;
     if(S.editing === n.dataset.id) return;
     e.stopPropagation();
-    hideBubble(); if(npFor && npFor !== n.dataset.id) closeProps();
+    hideBubble();
+    if(npFor && npFor !== n.dataset.id) closeProps();
+    if(cpFor && cpFor !== n.dataset.id) closeColors();
     if(S.editing) commit(false);
     S.sel = n.dataset.id;
     Array.prototype.forEach.call(el.nodes.children, function(b){ b.classList.toggle("sel", b.dataset.id === S.sel); });
@@ -705,7 +768,9 @@
       e.preventDefault(); el.q.focus(); el.q.select(); return;
     }
     if(typing) return;
-    if(e.key === "Escape" && (!el.np.hidden || !el.bubble.hidden)){ hideBubble(); closeProps(); return; }
+    if(e.key === "Escape" && (!el.np.hidden || !el.bubble.hidden || !el.cp.hidden)){
+      hideBubble(); closeProps(); closeColors(); return;
+    }
     if(!S.work[S.cur] || !S.sel) return;
     if((e.metaKey || e.ctrlKey) && (e.key === "k" || e.key === "K")){ e.preventDefault(); openProps(S.sel, "url"); return; }
     if(e.key === "Tab"){ e.preventDefault(); addNode(S.sel); }
@@ -718,9 +783,10 @@
   var pan = null;
   el.stage.addEventListener("mousedown", function(e){
     if(e.target.closest(".node") || e.target.closest(".tb") || e.target.closest(".zoom")
-       || e.target.closest(".blank") || e.target.closest(".np") || e.target.closest(".bubble")) return;
+       || e.target.closest(".blank") || e.target.closest(".np") || e.target.closest(".bubble")
+       || e.target.closest(".cp")) return;
     if(S.editing) commit(false);
-    hideBubble(); closeProps();
+    hideBubble(); closeProps(); closeColors();
     pan = { sx: e.clientX, sy: e.clientY, vx: S.view.x, vy: S.view.y };
     el.stage.classList.add("drag");
   });

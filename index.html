@@ -16,6 +16,8 @@
   --danger:#A6412F; --ok:#2C6E54;
   --d0:#14607F; --d1:#1E7F74; --d2:#50783C; --d3:#8A6A24; --d4:#8A4A52;
   --hit:#B5762A; --hit-soft:#F6E3BE;
+  --c-sky:#1E6F96; --c-teal:#15806F; --c-green:#4F7D33; --c-amber:#977216;
+  --c-orange:#A85A28; --c-rose:#A63F52; --c-violet:#6B4E9E; --c-slate:#5C6B75;
   --dot:rgba(20,29,35,.11);
   --shadow:0 1px 2px rgba(20,29,35,.06), 0 6px 18px rgba(20,29,35,.07);
   --font-ui:"Archivo","Noto Sans TC","PingFang TC","Microsoft JhengHei",system-ui,sans-serif;
@@ -30,6 +32,8 @@
     --danger:#E08874; --ok:#6FC39C;
     --d0:#4FA6C9; --d1:#4FBCAE; --d2:#8FBE6B; --d3:#D6B163; --d4:#D98B93;
     --hit:#E0B45F; --hit-soft:#4A3A1C;
+    --c-sky:#5BB2D4; --c-teal:#4FC2B0; --c-green:#93C169; --c-amber:#D9B45E;
+    --c-orange:#E0945F; --c-rose:#E07F96; --c-violet:#A98FDD; --c-slate:#93A4AF;
     --dot:rgba(228,237,242,.10);
     --shadow:0 1px 2px rgba(0,0,0,.3), 0 8px 22px rgba(0,0,0,.34);
   }
@@ -42,6 +46,8 @@
   --danger:#E08874; --ok:#6FC39C;
   --d0:#4FA6C9; --d1:#4FBCAE; --d2:#8FBE6B; --d3:#D6B163; --d4:#D98B93;
   --hit:#E0B45F; --hit-soft:#4A3A1C;
+  --c-sky:#5BB2D4; --c-teal:#4FC2B0; --c-green:#93C169; --c-amber:#D9B45E;
+  --c-orange:#E0945F; --c-rose:#E07F96; --c-violet:#A98FDD; --c-slate:#93A4AF;
   --dot:rgba(228,237,242,.10);
   --shadow:0 1px 2px rgba(0,0,0,.3), 0 8px 22px rgba(0,0,0,.34);
 }
@@ -125,7 +131,8 @@ button{font:inherit;color:inherit;cursor:pointer}
   color:var(--ink);box-shadow:var(--shadow);cursor:pointer;white-space:pre-wrap;word-break:break-word;
   transition:box-shadow .14s, border-color .14s}
 .node:hover{border-color:var(--line-2)}
-.node.root{background:var(--accent);color:var(--accent-ink);border-color:var(--accent);border-left-color:var(--accent);
+.node.tinted{background:var(--surface);background:color-mix(in srgb, var(--nc) 15%, var(--surface));border-color:var(--line)}
+.node.root{background:var(--nc,var(--accent));color:var(--accent-ink);border-color:var(--nc,var(--accent));border-left-color:var(--nc,var(--accent));
   font-size:15.5px;font-weight:600;padding:9px 14px;max-width:260px}
 .node.sel{box-shadow:0 0 0 2px var(--accent), var(--shadow)}
 .node[contenteditable="true"]{cursor:text;outline:none;box-shadow:0 0 0 2px var(--accent), var(--shadow)}
@@ -159,6 +166,22 @@ button{font:inherit;color:inherit;cursor:pointer}
 .np .btn{padding:5px 12px;font-size:12.5px}
 .np .btn.primary{border-color:var(--accent);background:var(--accent);color:var(--accent-ink);font-weight:500}
 .np .hint{font-size:11.5px;color:var(--muted);line-height:1.5}
+
+/* 顏色挑選 */
+.cp{position:absolute;background:var(--surface);border:1px solid var(--line-2);border-radius:7px;
+  padding:10px;box-shadow:var(--shadow);transform:translateX(-50%);z-index:7;
+  display:flex;flex-direction:column;gap:8px;width:208px}
+.cp[hidden]{display:none!important}
+.cp-grid{display:grid;grid-template-columns:repeat(5,1fr);gap:6px}
+.cp-grid button{width:100%;aspect-ratio:1;border:1px solid var(--line);border-radius:5px;padding:0;
+  background:var(--sw);cursor:pointer}
+.cp-grid button:hover{outline:2px solid var(--ink-2);outline-offset:1px}
+.cp-grid button.on{outline:2px solid var(--ink);outline-offset:1px}
+.cp-sub{display:flex;align-items:center;gap:6px;font-size:12.5px;color:var(--ink-2);cursor:pointer}
+.cp-sub input{accent-color:var(--accent);margin:0}
+.cp-reset{border:1px solid var(--line-2);background:var(--surface-2);border-radius:5px;padding:5px 8px;
+  font-size:12.5px;color:var(--ink-2)}
+.cp-reset:hover{border-color:var(--ink-2);color:var(--ink)}
 
 /* 備註泡泡 */
 .bubble{position:absolute;max-width:300px;background:var(--surface);border:1px solid var(--line-2);
@@ -249,6 +272,7 @@ button{font:inherit;color:inherit;cursor:pointer}
         <button data-act="sib">＋ 同層</button>
         <i class="sep"></i>
         <button data-act="rename">改名</button>
+        <button data-act="color">顏色</button>
         <button data-act="link">連結</button>
         <button data-act="note">備註</button>
         <button class="del" data-act="del">刪除</button>
@@ -264,6 +288,12 @@ button{font:inherit;color:inherit;cursor:pointer}
           <button class="btn" id="npCancel">取消</button>
           <button class="btn primary" id="npOk">套用</button>
         </div>
+      </div>
+
+      <div class="cp" id="cp" hidden>
+        <div class="cp-grid" id="cpGrid"></div>
+        <label class="cp-sub"><input type="checkbox" id="cpDeep"> 同時套用到底下所有分支</label>
+        <button class="cp-reset" id="cpReset">改回跟著層級的顏色</button>
       </div>
 
       <div class="bubble" id="bubble" hidden></div>
@@ -288,7 +318,7 @@ button{font:inherit;color:inherit;cursor:pointer}
       <span><kbd>Delete</kbd> 刪除節點</span>
       <span><kbd>⌘S</kbd> 存檔</span>
       <span><kbd>⌘F</kbd> 搜尋節點</span>
-      <span>選中節點 → 工具列加 連結 / 備註</span>
+      <span>選中節點 → 工具列可改 顏色 / 連結 / 備註</span>
       <span>拖曳空白處平移 · 滾輪縮放</span>
     </div>
   </div>

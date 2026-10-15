@@ -8,6 +8,8 @@
 
 - 建立多張心智圖，可改名、刪除
 - 節點任意增刪：`Tab` 加子節點、`Enter` 加同層、雙擊或 `F2` 改文字、`Delete` 刪除（含底下整串分支）
+- 每個節點可**換顏色**：選中節點 → 工具列「顏色」，8 色調色盤，可勾選「同時套用到底下所有分支」，
+  也能改回預設的「跟著層級」配色。顏色存的是色名（sky/teal/…），淺色與深色主題各有一組對應色值
 - 每個節點可掛**超連結**與**備註**：選中節點 → 工具列「連結 / 備註」（或 `⌘K`）。
   有掛的節點會出現小圖示，點連結圖示開新分頁、點備註圖示跳出備註泡泡。
   網址只接受 `http://` / `https://`，沒寫協定會自動補 `https://`
@@ -42,7 +44,7 @@ create table public.mindmaps (
 );
 ```
 
-`data` 內容為 `{ rootId, nodes }`，`nodes` 是 `{ [id]: { id, text, parent, side, seq, url?, note? } }`。
+`data` 內容為 `{ rootId, nodes }`，`nodes` 是 `{ [id]: { id, text, parent, side, seq, url?, note?, color? } }`。
 
 ## 檔案
 
