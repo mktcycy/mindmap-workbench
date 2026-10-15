@@ -30,7 +30,8 @@
     q: document.getElementById("q"), qn: document.getElementById("qn"), qPrev: document.getElementById("qPrev"),
     qNext: document.getElementById("qNext"), qClear: document.getElementById("qClear"),
     cp: document.getElementById("cp"), cpGrid: document.getElementById("cpGrid"),
-    cpDeep: document.getElementById("cpDeep"), cpReset: document.getElementById("cpReset")
+    cpDeep: document.getElementById("cpDeep"), cpReset: document.getElementById("cpReset"),
+    dropline: document.getElementById("dropline")
   };
 
   var PALETTE = [
@@ -185,6 +186,122 @@
     if(sub && !confirm("刪除「"+txt+"」會連同底下 "+sub+" 層分支一起刪除，確定嗎？")) return;
     (function wipe(x){ kids(m, x).forEach(function(c){ wipe(c.id); }); delete m.nodes[x]; })(id);
     S.sel = n.parent; markDirty(); render();
+  }
+
+  /* ================= 拖曳換位置 ================= */
+  function isAncestor(m, a, b){           /* a 是不是 b 的祖先（或就是 b 本人） */
+    var n = m.nodes[b];
+    while(n){ if(n.id === a) return true; n = n.parent ? m.nodes[n.parent] : null; }
+    return false;
+  }
+  function setSideDeep(m, id, side){
+    m.nodes[id].side = side;
+    kids(m, id).forEach(function(c){ setSideDeep(m, c.id, side); });
+  }
+  function lighterSide(m, exceptId){      /* 中心主題左右哪邊比較空 */
+    var r = 0, l = 0;
+    kids(m, m.rootId).forEach(function(s){ if(s.id !== exceptId) (s.side === "L" ? l++ : r++); });
+    return l < r ? "L" : "R";
+  }
+  function indexOfId(list, id){
+    for(var i = 0; i < list.length; i++) if(list[i].id === id) return i;
+    return -1;
+  }
+  function moveNode(dragId, targetId, mode){
+    var m = S.work[S.cur];
+    var n = m && m.nodes[dragId], t = m && m.nodes[targetId];
+    if(!n || !t || n.parent === null) return false;
+    var newParent = (mode === "into") ? targetId : t.parent;
+    if(newParent === null || newParent === undefined) return false;
+    if(isAncestor(m, dragId, newParent)) return false;
+
+    var same = n.parent === newParent;
+    n.parent = newParent;
+    var side = (newParent === m.rootId)
+      ? (mode === "into" ? (same ? n.side : lighterSide(m, dragId)) : t.side)
+      : (m.nodes[newParent].side || "R");
+    setSideDeep(m, dragId, side);
+
+    var sibs = kids(m, newParent).filter(function(s){ return s.id !== dragId; });
+    if(mode === "into"){ sibs.push(n); }
+    else {
+      var at = indexOfId(sibs, targetId);
+      sibs.splice(at < 0 ? sibs.length : (mode === "before" ? at : at + 1), 0, n);
+    }
+    sibs.forEach(function(s, i){ m.nodes[s.id].seq = i; });
+    markDirty(); S.sel = dragId; render();
+    return true;
+  }
+
+  var drag = null;
+  function dropTargetAt(x, y){
+    var m = S.work[S.cur]; if(!m) return null;
+    var els = el.nodes.children;
+    for(var i = 0; i < els.length; i++){
+      var b = els[i], id = b.dataset.id;
+      if(isAncestor(m, drag.id, id)) continue;          /* 不能丟進自己或自己的後代 */
+      var r = b.getBoundingClientRect();
+      if(x < r.left || x > r.right || y < r.top || y > r.bottom) continue;
+      var mode = "into";
+      if(m.nodes[id].parent !== null){                   /* 中心主題沒有同層可插 */
+        var rel = (y - r.top) / Math.max(r.height, 1);
+        if(rel < 0.3) mode = "before";
+        else if(rel > 0.7) mode = "after";
+      }
+      return { id: id, mode: mode, rect: r };
+    }
+    return null;
+  }
+  function paintDropCue(hit){
+    Array.prototype.forEach.call(el.nodes.children, function(b){
+      b.classList.toggle("drop-into", !!hit && hit.mode === "into" && b.dataset.id === hit.id);
+    });
+    if(hit && hit.mode !== "into"){
+      var sr = el.stage.getBoundingClientRect();
+      el.dropline.style.left = (hit.rect.left - sr.left) + "px";
+      el.dropline.style.width = hit.rect.width + "px";
+      el.dropline.style.top = ((hit.mode === "before" ? hit.rect.top : hit.rect.bottom) - sr.top - 1) + "px";
+      el.dropline.hidden = false;
+    } else {
+      el.dropline.hidden = true;
+    }
+  }
+  function dragMove(x, y){
+    if(!drag) return;
+    if(!drag.active){
+      if(Math.abs(x - drag.x0) + Math.abs(y - drag.y0) < 5) return;
+      drag.active = true;
+      document.body.classList.add("dragging-node");
+      var b = el.nodes.querySelector('[data-id="'+drag.id+'"]');
+      if(b) b.classList.add("dragging");
+      el.tb.hidden = true; hideBubble(); closeProps(); closeColors();
+    }
+    drag.hit = dropTargetAt(x, y);
+    paintDropCue(drag.hit);
+  }
+  function dragEnd(){
+    if(!drag) return;
+    var d = drag; drag = null;
+    document.body.classList.remove("dragging-node");
+    el.dropline.hidden = true;
+    var b = el.nodes.querySelector('[data-id="'+d.id+'"]');
+    if(b){ b.classList.remove("dragging"); }
+    Array.prototype.forEach.call(el.nodes.children, function(x){ x.classList.remove("drop-into"); });
+    if(!d.active) return;
+    if(d.hit && d.hit.id !== d.id){
+      if(!moveNode(d.id, d.hit.id, d.hit.mode)) toast("這個位置不能放（不能把節點移到自己的分支底下）");
+    }
+    placeToolbar();
+  }
+  function dragCancel(){
+    if(!drag) return;
+    var d = drag; drag = null;
+    document.body.classList.remove("dragging-node");
+    el.dropline.hidden = true;
+    var b = el.nodes.querySelector('[data-id="'+d.id+'"]');
+    if(b) b.classList.remove("dragging");
+    Array.prototype.forEach.call(el.nodes.children, function(x){ x.classList.remove("drop-into"); });
+    placeToolbar();
   }
 
   /* ================= node text editing ================= */
@@ -739,6 +856,11 @@
     S.sel = n.dataset.id;
     Array.prototype.forEach.call(el.nodes.children, function(b){ b.classList.toggle("sel", b.dataset.id === S.sel); });
     placeToolbar();
+    var mm = S.work[S.cur];
+    if(mm && mm.nodes[S.sel] && mm.nodes[S.sel].parent !== null){
+      e.preventDefault();                      /* 拖曳時不要選到文字 */
+      drag = { id: S.sel, x0: e.clientX, y0: e.clientY, active: false, hit: null };
+    }
   });
   el.nodes.addEventListener("dblclick", function(e){
     var n = e.target.closest(".node"); if(!n) return;
@@ -768,6 +890,7 @@
       e.preventDefault(); el.q.focus(); el.q.select(); return;
     }
     if(typing) return;
+    if(e.key === "Escape" && drag){ dragCancel(); return; }
     if(e.key === "Escape" && (!el.np.hidden || !el.bubble.hidden || !el.cp.hidden)){
       hideBubble(); closeProps(); closeColors(); return;
     }
@@ -791,18 +914,40 @@
     el.stage.classList.add("drag");
   });
   window.addEventListener("mousemove", function(e){
+    if(drag){ dragMove(e.clientX, e.clientY); return; }
     if(!pan) return;
     S.view.x = pan.vx + (e.clientX - pan.sx);
     S.view.y = pan.vy + (e.clientY - pan.sy);
     applyView();
   });
-  window.addEventListener("mouseup", function(){ pan = null; el.stage.classList.remove("drag"); });
+  window.addEventListener("mouseup", function(){
+    if(drag) dragEnd();
+    pan = null; el.stage.classList.remove("drag");
+  });
   el.stage.addEventListener("wheel", function(e){
     e.preventDefault();
     var r = el.stage.getBoundingClientRect();
     var f = Math.pow(0.9988, e.deltaY * (e.deltaMode === 1 ? 18 : 1));
     zoomAt(e.clientX - r.left, e.clientY - r.top, clamp(f, 0.8, 1.25));
   }, {passive:false});
+
+  el.nodes.addEventListener("touchstart", function(e){
+    if(e.target.closest(".ic")) return;
+    var n = e.target.closest(".node"); if(!n) return;
+    var m = S.work[S.cur];
+    if(!m || !m.nodes[n.dataset.id] || m.nodes[n.dataset.id].parent === null) return;
+    if(S.editing === n.dataset.id) return;
+    var t = e.touches[0];
+    drag = { id: n.dataset.id, x0: t.clientX, y0: t.clientY, active: false, hit: null, touch: true };
+  }, {passive:true});
+  window.addEventListener("touchmove", function(e){
+    if(!drag || !drag.touch) return;
+    var t = e.touches[0]; if(!t) return;
+    dragMove(t.clientX, t.clientY);
+    if(drag && drag.active && e.cancelable) e.preventDefault();   /* 拖節點時不要捲頁 */
+  }, {passive:false});
+  window.addEventListener("touchend", function(){ if(drag && drag.touch) dragEnd(); }, {passive:true});
+  window.addEventListener("touchcancel", function(){ if(drag) dragCancel(); }, {passive:true});
 
   var tp = null;
   function dist(t){ return Math.hypot(t[0].clientX-t[1].clientX, t[0].clientY-t[1].clientY); }
