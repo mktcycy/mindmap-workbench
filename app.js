@@ -1,4 +1,4 @@
-/* 心智圖工作台 — storage layer + editor
+/* 心智圖工具 — storage layer + editor
    資料存放：填了 CONFIG.SUPABASE_URL / KEY 就走雲端共用，沒填就存在這台瀏覽器。 */
 (function(){
   "use strict";
@@ -26,7 +26,9 @@
     zIn: document.getElementById("zIn"), zOut: document.getElementById("zOut"), zReset: document.getElementById("zReset"),
     np: document.getElementById("np"), npUrl: document.getElementById("npUrl"), npNote: document.getElementById("npNote"),
     npOk: document.getElementById("npOk"), npCancel: document.getElementById("npCancel"),
-    bubble: document.getElementById("bubble")
+    bubble: document.getElementById("bubble"),
+    q: document.getElementById("q"), qn: document.getElementById("qn"), qPrev: document.getElementById("qPrev"),
+    qNext: document.getElementById("qNext"), qClear: document.getElementById("qClear")
   };
 
   var ICON = {
@@ -53,7 +55,8 @@
   var S = {
     remote: {}, work: {}, order: [], dirty: {}, fresh: {},
     cur: null, sel: null, editing: null,
-    view: {x:0, y:0, k:1}, pos: {}, saving: false
+    view: {x:0, y:0, k:1}, pos: {}, saving: false,
+    q: "", hits: [], hitIdx: 0
   };
 
   function uid(n){ var s="", a="abcdefghijklmnopqrstuvwxyz0123456789"; n=n||7;
@@ -195,17 +198,42 @@
   }
 
   /* ================= layout ================= */
+  /* 把符合搜尋字串的片段包進 <mark> */
+  function putText(parent, text, q){
+    if(!q){ parent.appendChild(document.createTextNode(text)); return; }
+    var lower = text.toLowerCase(), i = 0, at;
+    while((at = lower.indexOf(q, i)) >= 0){
+      if(at > i) parent.appendChild(document.createTextNode(text.slice(i, at)));
+      var mk = document.createElement("mark");
+      mk.textContent = text.slice(at, at + q.length);
+      parent.appendChild(mk);
+      i = at + q.length;
+    }
+    if(i < text.length) parent.appendChild(document.createTextNode(text.slice(i)));
+  }
+  /* 節點文字、備註、網址任一命中都算 */
+  function matches(n, q){
+    if(!q) return false;
+    return (n.text || "").toLowerCase().indexOf(q) >= 0
+        || (n.note || "").toLowerCase().indexOf(q) >= 0
+        || (n.url  || "").toLowerCase().indexOf(q) >= 0;
+  }
+
   function renderNodes(){
-    var m = S.work[S.cur];
+    var m = S.work[S.cur], q = S.q;
     el.nodes.textContent = ""; el.wires.textContent = "";
+    el.nodes.classList.toggle("searching", !!q);
+    S.hits = [];
     if(!m) return;
     Object.keys(m.nodes).forEach(function(id){
       var n = m.nodes[id], d = depth(m, id);
+      var hit = matches(n, q);
+      if(hit) S.hits.push(id);
       var b = document.createElement("div");
-      b.className = "node" + (n.parent===null ? " root" : "") + (S.sel===id ? " sel" : "");
+      b.className = "node" + (n.parent===null ? " root" : "") + (S.sel===id ? " sel" : "") + (hit ? " hit" : "");
       b.dataset.id = id;
       b.style.setProperty("--nc", "var("+DEPTH_VARS[Math.min(d, DEPTH_VARS.length-1)]+")");
-      if(n.text){ b.appendChild(document.createTextNode(n.text)); }
+      if(n.text){ putText(b, n.text, q); }
       else { var i=document.createElement("span"); i.className="ph"; i.textContent=PH; b.appendChild(i); }
 
       var url = safeUrl(n.url), note = (n.note || "").trim();
@@ -380,10 +408,10 @@
     if(!n){ closeProps(); return; }
     var raw = el.npUrl.value.trim(), url = safeUrl(raw), note = el.npNote.value.trim();
     if(raw && !url){ toast("網址看起來不對，只接受 http:// 或 https:// 開頭的連結"); el.npUrl.focus(); return; }
-    var before = (n.url||"") + " " + (n.note||"");
+    var before = (n.url||"") + " " + (n.note||"");
     if(url) n.url = url; else delete n.url;
     if(note) n.note = note; else delete n.note;
-    if(before !== (n.url||"") + " " + (n.note||"")) markDirty();
+    if(before !== (n.url||"") + " " + (n.note||"")) markDirty();
     closeProps(); render();
   }
   function showBubble(id){
@@ -400,6 +428,48 @@
     }
   }
   function hideBubble(){ el.bubble.hidden = true; }
+
+  /* ================= 搜尋 ================= */
+  function centerOn(id){
+    var p = S.pos[id]; if(!p) return;
+    S.view.x = el.stage.clientWidth/2 - (p.x + p.w/2) * S.view.k;
+    S.view.y = el.stage.clientHeight/2 - (p.y + p.h/2) * S.view.k;
+    applyView();
+  }
+  function renderSearch(){
+    var on = !!S.q, has = S.hits.length;
+    if(S.hitIdx >= has) S.hitIdx = 0;
+    el.q.disabled = !S.work[S.cur];
+    el.qClear.hidden = !on;
+    el.qPrev.hidden = el.qNext.hidden = !(on && has > 1);
+    el.qn.hidden = !on;
+    if(on){
+      el.qn.textContent = has ? (S.hitIdx + 1) + " / " + has : "沒有符合";
+      el.qn.className = "qn" + (has ? "" : " none");
+      if(has){
+        var cue = S.hits[S.hitIdx];
+        Array.prototype.forEach.call(el.nodes.children, function(b){
+          b.classList.toggle("cue", b.dataset.id === cue);
+        });
+      }
+    }
+  }
+  function runSearch(raw){
+    var q = (raw || "").trim().toLowerCase();
+    if(q === S.q) return;
+    S.q = q; S.hitIdx = 0;
+    render();
+  }
+  function step(d){
+    if(!S.hits.length) return;
+    S.hitIdx = (S.hitIdx + d + S.hits.length) % S.hits.length;
+    renderSearch();
+    centerOn(S.hits[S.hitIdx]);
+  }
+  function clearSearch(focus){
+    el.q.value = ""; S.q = ""; S.hitIdx = 0; render();
+    if(focus) el.q.focus();
+  }
 
   /* ================= chrome ================= */
   function listRows(){
@@ -458,7 +528,7 @@
     el.blank.hidden = !!S.work[S.cur];
     hideBubble();
     if(!S.editing) renderNodes();
-    layout(); renderList(); renderTop(); placeToolbar();
+    layout(); renderList(); renderTop(); placeToolbar(); renderSearch();
   }
   function open(id){
     if(S.editing) commit(true);
@@ -544,6 +614,20 @@
     applyView();
   };
 
+  var qT = 0;
+  el.q.addEventListener("input", function(){
+    clearTimeout(qT);
+    var v = el.q.value;
+    qT = setTimeout(function(){ runSearch(v); }, 130);
+  });
+  el.q.addEventListener("keydown", function(e){
+    if(e.key === "Enter"){ e.preventDefault(); clearTimeout(qT); runSearch(el.q.value); step(e.shiftKey ? -1 : 1); }
+    else if(e.key === "Escape"){ e.preventDefault(); clearSearch(true); }
+  });
+  el.qPrev.onclick = function(){ step(-1); };
+  el.qNext.onclick = function(){ step(1); };
+  el.qClear.onclick = function(){ clearSearch(true); };
+
   el.titleIn.addEventListener("input", function(){
     var m = S.work[S.cur]; if(!m) return;
     m.title = el.titleIn.value; markDirty();
@@ -617,6 +701,9 @@
     var t = e.target;
     var typing = t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.isContentEditable);
     if((e.metaKey || e.ctrlKey) && (e.key === "s" || e.key === "S")){ e.preventDefault(); save(); return; }
+    if((e.metaKey || e.ctrlKey) && (e.key === "f" || e.key === "F") && S.work[S.cur]){
+      e.preventDefault(); el.q.focus(); el.q.select(); return;
+    }
     if(typing) return;
     if(e.key === "Escape" && (!el.np.hidden || !el.bubble.hidden)){ hideBubble(); closeProps(); return; }
     if(!S.work[S.cur] || !S.sel) return;

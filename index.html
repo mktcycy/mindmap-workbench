@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>心智圖工作台</title>
+<title>心智圖工具</title>
 <meta name="description" content="建立多張心智圖、自由增刪節點，按儲存就寫回雲端。">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%F0%9F%A7%A0%3C/text%3E%3C/svg%3E">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500&family=Noto+Sans+TC:wght@400;500;700&display=swap">
@@ -15,6 +15,7 @@
   --accent:#14607F; --accent-ink:#FFFFFF; --accent-soft:#DCEAF1;
   --danger:#A6412F; --ok:#2C6E54;
   --d0:#14607F; --d1:#1E7F74; --d2:#50783C; --d3:#8A6A24; --d4:#8A4A52;
+  --hit:#B5762A; --hit-soft:#F6E3BE;
   --dot:rgba(20,29,35,.11);
   --shadow:0 1px 2px rgba(20,29,35,.06), 0 6px 18px rgba(20,29,35,.07);
   --font-ui:"Archivo","Noto Sans TC","PingFang TC","Microsoft JhengHei",system-ui,sans-serif;
@@ -28,6 +29,7 @@
     --accent:#4FA6C9; --accent-ink:#06171F; --accent-soft:#17323F;
     --danger:#E08874; --ok:#6FC39C;
     --d0:#4FA6C9; --d1:#4FBCAE; --d2:#8FBE6B; --d3:#D6B163; --d4:#D98B93;
+    --hit:#E0B45F; --hit-soft:#4A3A1C;
     --dot:rgba(228,237,242,.10);
     --shadow:0 1px 2px rgba(0,0,0,.3), 0 8px 22px rgba(0,0,0,.34);
   }
@@ -39,6 +41,7 @@
   --accent:#4FA6C9; --accent-ink:#06171F; --accent-soft:#17323F;
   --danger:#E08874; --ok:#6FC39C;
   --d0:#4FA6C9; --d1:#4FBCAE; --d2:#8FBE6B; --d3:#D6B163; --d4:#D98B93;
+  --hit:#E0B45F; --hit-soft:#4A3A1C;
   --dot:rgba(228,237,242,.10);
   --shadow:0 1px 2px rgba(0,0,0,.3), 0 8px 22px rgba(0,0,0,.34);
 }
@@ -90,6 +93,21 @@ button{font:inherit;color:inherit;cursor:pointer}
 .btn:disabled{opacity:.42;cursor:default}
 .btn.save{border-color:var(--accent);background:var(--accent);color:var(--accent-ink);font-weight:500;min-width:96px}
 .btn.save:disabled{background:var(--surface);color:var(--muted);border-color:var(--line)}
+/* ---------- 搜尋 ---------- */
+.search{display:flex;align-items:center;gap:4px;border:1px solid var(--line);background:var(--surface-2);
+  border-radius:5px;padding:3px 6px 3px 8px;min-width:188px}
+.search:focus-within{border-color:var(--accent);background:var(--surface)}
+.search .mag{width:13px;height:13px;flex:none;color:var(--muted)}
+.search input{flex:1;min-width:0;border:0;background:none;color:var(--ink);font:inherit;font-size:13px;padding:4px 0;
+  -webkit-appearance:none;appearance:none}
+.search input:focus{outline:none}
+.search input::-webkit-search-cancel-button{display:none}
+.search input:disabled{cursor:default}
+.search .qn{font-family:var(--font-mono);font-size:11px;color:var(--muted);font-variant-numeric:tabular-nums;white-space:nowrap}
+.search .qn.none{color:var(--danger)}
+.search .qb{border:0;background:none;color:var(--muted);border-radius:4px;line-height:1;padding:3px 5px;font-size:14px}
+.search .qb:hover{background:var(--ground-2);color:var(--ink)}
+
 .notice{padding:9px 18px;font-size:12.5px;background:var(--accent-soft);color:var(--ink);border-bottom:1px solid var(--line)}
 .notice.bad{background:var(--surface-2);border-left:3px solid var(--danger)}
 
@@ -112,6 +130,10 @@ button{font:inherit;color:inherit;cursor:pointer}
 .node.sel{box-shadow:0 0 0 2px var(--accent), var(--shadow)}
 .node[contenteditable="true"]{cursor:text;outline:none;box-shadow:0 0 0 2px var(--accent), var(--shadow)}
 .node .ph{color:var(--muted)}
+.node mark{background:var(--hit-soft);color:inherit;border-radius:2px;padding:0 1px}
+#nodes.searching .node{opacity:.3}
+#nodes.searching .node.hit{opacity:1;border-color:var(--hit);box-shadow:0 0 0 2px var(--hit), var(--shadow)}
+#nodes.searching .node.hit.cue{box-shadow:0 0 0 3px var(--hit), var(--shadow)}
 .node .badges{display:inline-flex;gap:3px;margin-left:6px;vertical-align:-3px;white-space:nowrap}
 .node[contenteditable="true"] .badges{display:none}
 .ic{display:inline-flex;align-items:center;justify-content:center;width:19px;height:19px;flex:none;
@@ -186,8 +208,8 @@ button{font:inherit;color:inherit;cursor:pointer}
 <div class="app">
   <aside class="rail">
     <div class="brand">
-      <h1>心智圖工作台</h1>
-      <p>Mind Map Workbench</p>
+      <h1>心智圖工具</h1>
+      <p>Mind Map Tool</p>
     </div>
     <div class="rail-head">
       <span id="railCount">我的心智圖</span>
@@ -201,6 +223,14 @@ button{font:inherit;color:inherit;cursor:pointer}
     <div class="topbar">
       <input class="title-in" id="titleIn" placeholder="心智圖名稱" autocomplete="off" spellcheck="false" disabled>
       <span class="meta" id="metaTxt"></span>
+      <div class="search" id="search">
+        <svg class="mag" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" aria-hidden="true"><circle cx="7" cy="7" r="4.2"/><path d="M10.2 10.2 14 14"/></svg>
+        <input id="q" type="search" placeholder="搜尋節點" autocomplete="off" spellcheck="false" aria-label="搜尋這張心智圖的節點" disabled>
+        <span class="qn" id="qn" hidden></span>
+        <button class="qb" id="qPrev" title="上一個符合的節點" hidden>&#8249;</button>
+        <button class="qb" id="qNext" title="下一個符合的節點" hidden>&#8250;</button>
+        <button class="qb" id="qClear" title="清除搜尋" hidden>&#215;</button>
+      </div>
       <div class="acts">
         <button class="btn" id="btnFit">置中</button>
         <button class="btn save" id="btnSave" disabled>已儲存</button>
@@ -257,6 +287,7 @@ button{font:inherit;color:inherit;cursor:pointer}
       <span><kbd>F2</kbd> / 雙擊 改文字</span>
       <span><kbd>Delete</kbd> 刪除節點</span>
       <span><kbd>⌘S</kbd> 存檔</span>
+      <span><kbd>⌘F</kbd> 搜尋節點</span>
       <span>選中節點 → 工具列加 連結 / 備註</span>
       <span>拖曳空白處平移 · 滾輪縮放</span>
     </div>
